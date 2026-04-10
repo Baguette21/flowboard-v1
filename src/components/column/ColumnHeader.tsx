@@ -1,0 +1,256 @@
+import { useState } from "react";
+import { useMutation } from "convex/react";
+import { api } from "../../../convex/_generated/api";
+import type { Doc } from "../../../convex/_generated/dataModel";
+import {
+  GripVertical,
+  Check,
+  X,
+  Trash2,
+  Pencil,
+  Palette,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  ChevronDown,
+} from "lucide-react";
+import { toast } from "sonner";
+import { Dropdown } from "../ui/Dropdown";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { cn } from "../../lib/utils";
+
+const COLUMN_COLORS = [
+  "#E63B2E", "#F97316", "#EAB308", "#22C55E",
+  "#06B6D4", "#3B82F6", "#8B5CF6", "#EC4899",
+  undefined, // no color
+];
+
+interface ColumnHeaderProps {
+  column: Doc<"columns">;
+  cardCount: number;
+  dragHandleProps?: React.HTMLAttributes<HTMLElement>;
+  canMoveBackward?: boolean;
+  canMoveForward?: boolean;
+  onMoveBackward?: () => void;
+  onMoveForward?: () => void;
+  reorderOrientation?: "horizontal" | "vertical";
+}
+
+export function ColumnHeader({
+  column,
+  cardCount,
+  dragHandleProps,
+  canMoveBackward = false,
+  canMoveForward = false,
+  onMoveBackward,
+  onMoveForward,
+  reorderOrientation = "horizontal",
+}: ColumnHeaderProps) {
+  const updateColumn = useMutation(api.columns.update);
+  const deleteColumn = useMutation(api.columns.remove);
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState(column.title);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showColorPicker, setShowColorPicker] = useState(false);
+
+  const handleSave = async () => {
+    const trimmed = editTitle.trim();
+    if (!trimmed || trimmed === column.title) {
+      setEditTitle(column.title);
+      setIsEditing(false);
+      return;
+    }
+    try {
+      await updateColumn({ columnId: column._id, title: trimmed });
+      toast.success("Status renamed");
+    } catch {
+      toast.error("Failed to rename status");
+      setEditTitle(column.title);
+    }
+    setIsEditing(false);
+  };
+
+  const handleDelete = async () => {
+    setIsDeleting(true);
+    try {
+      await deleteColumn({ columnId: column._id, deleteCards: true });
+      toast.success(`Status "${column.title}" deleted`);
+    } catch {
+      toast.error("Failed to delete status");
+    } finally {
+      setIsDeleting(false);
+      setConfirmDelete(false);
+    }
+  };
+
+  const handleColorChange = async (color: string | undefined) => {
+    await updateColumn({ columnId: column._id, color });
+    setShowColorPicker(false);
+  };
+
+  const BackwardIcon = reorderOrientation === "vertical" ? ChevronUp : ChevronLeft;
+  const ForwardIcon = reorderOrientation === "vertical" ? ChevronDown : ChevronRight;
+  const actionItems = [
+    {
+      label: "Rename",
+      icon: <Pencil className="w-4 h-4" />,
+      onClick: () => {
+        setShowColorPicker(false);
+        setEditTitle(column.title);
+        setIsEditing(true);
+      },
+    },
+    {
+      label: "Change color",
+      icon: <Palette className="w-4 h-4" />,
+      onClick: () => setShowColorPicker((current) => !current),
+    },
+    {
+      label: "Delete column",
+      icon: <Trash2 className="w-4 h-4" />,
+      onClick: () => {
+        setShowColorPicker(false);
+        setConfirmDelete(true);
+      },
+      danger: true,
+      separator: true,
+    },
+  ];
+
+  return (
+    <>
+      <div
+        className="p-4 flex items-center gap-2 sticky top-0 bg-brand-bg/80 backdrop-blur-xl z-10 border-b-2 border-brand-text/10 group"
+        style={column.color ? { borderBottomColor: `${column.color}40` } : {}}
+      >
+        <div
+          {...(!isEditing ? dragHandleProps : undefined)}
+          className={cn(
+            "flex min-w-0 flex-1 items-center gap-2 rounded-xl",
+            !isEditing && dragHandleProps
+              ? "cursor-grab active:cursor-grabbing touch-none"
+              : "",
+          )}
+        >
+          {dragHandleProps ? (
+            <span className="text-brand-text/25 transition-colors group-hover:text-brand-text/45 flex-shrink-0">
+              <GripVertical className="w-4 h-4" />
+            </span>
+          ) : null}
+
+          {/* Card count badge */}
+          <div
+            className="flex items-center justify-center w-6 h-6 rounded-full bg-brand-text text-brand-bg font-mono text-xs font-bold shadow-md flex-shrink-0"
+            style={column.color ? { backgroundColor: column.color } : {}}
+          >
+            {cardCount}
+          </div>
+
+          {/* Title */}
+          {isEditing ? (
+            <div className="flex-1 flex items-center gap-1.5">
+              <input
+                autoFocus
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleSave();
+                  if (e.key === "Escape") {
+                    setEditTitle(column.title);
+                    setIsEditing(false);
+                  }
+                }}
+                className="flex-1 text-base font-serif italic font-bold bg-brand-bg border-2 border-brand-text/20 rounded-xl px-2 py-0.5 focus:outline-none focus:border-brand-text"
+              />
+              <button onClick={handleSave} className="p-1 text-green-600 hover:bg-green-50 rounded-lg">
+                <Check className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => { setEditTitle(column.title); setIsEditing(false); }}
+                className="p-1 text-brand-text/40 hover:bg-brand-text/10 rounded-lg"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : (
+            <h2
+              className={cn(
+                "flex-1 min-w-0 select-none font-serif italic font-bold text-lg leading-none tracking-tight pt-1"
+              )}
+              onDoubleClick={() => { setEditTitle(column.title); setIsEditing(true); }}
+            >
+              {column.title}
+            </h2>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <button
+            type="button"
+            onClick={onMoveBackward}
+            disabled={!canMoveBackward}
+            className="p-1.5 rounded-xl text-brand-text/35 hover:text-brand-text hover:bg-brand-text/10 transition-colors disabled:opacity-25 disabled:hover:bg-transparent disabled:hover:text-brand-text/35"
+            title={reorderOrientation === "vertical" ? "Move up" : "Move left"}
+          >
+            <BackwardIcon className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={onMoveForward}
+            disabled={!canMoveForward}
+            className="p-1.5 rounded-xl text-brand-text/35 hover:text-brand-text hover:bg-brand-text/10 transition-colors disabled:opacity-25 disabled:hover:bg-transparent disabled:hover:text-brand-text/35"
+            title={reorderOrientation === "vertical" ? "Move down" : "Move right"}
+          >
+            <ForwardIcon className="w-4 h-4" />
+          </button>
+          {!isEditing && (
+            <Dropdown
+              trigger={
+                <button
+                  type="button"
+                  className="p-1.5 rounded-xl text-brand-text/35 hover:text-brand-text hover:bg-brand-text/10 transition-colors"
+                  title="Edit status"
+                >
+                  <Pencil className="w-4 h-4" />
+                </button>
+              }
+              items={actionItems}
+            />
+          )}
+        </div>
+      </div>
+
+      {/* Color picker inline */}
+      {showColorPicker && (
+        <div className="flex flex-wrap gap-2 px-4 py-3 border-b-2 border-brand-text/10 bg-brand-bg/50">
+          {COLUMN_COLORS.map((c, i) => (
+            <button
+              key={i}
+              onClick={() => handleColorChange(c)}
+              className={cn(
+                "w-6 h-6 rounded-full border-2 transition-all hover:scale-110",
+                c === undefined ? "bg-brand-text/10 border-brand-text/20" : "border-transparent",
+                column.color === c && "border-brand-text scale-110",
+              )}
+              style={c ? { backgroundColor: c } : {}}
+              title={c ?? "None"}
+            />
+          ))}
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        onConfirm={handleDelete}
+        title={`Delete status "${column.title}"?`}
+        description="All tasks in this status will be permanently deleted. This cannot be undone."
+        confirmLabel="Delete Status"
+        isDestructive
+        isLoading={isDeleting}
+      />
+    </>
+  );
+}
