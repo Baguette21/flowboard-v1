@@ -24,6 +24,7 @@ export default defineSchema({
     name: v.string(),
     slug: v.string(),
     color: v.string(),
+    icon: v.optional(v.string()),
     isFavorite: v.boolean(),
     createdAt: v.number(),
     updatedAt: v.number(),
